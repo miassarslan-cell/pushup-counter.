@@ -3,25 +3,19 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+# Заголовок
 st.set_page_config(page_title="AI Gym", layout="centered")
 st.title("💪 Твой AI Счетчик")
 
-# --- БРОНЕБОЙНЫЙ ИМПОРТ ---
-try:
-    # Пробуем стандартный путь
-    mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
-except AttributeError:
-    # Если не вышло, лезем во внутренности (для новых версий)
-    import mediapipe.python.solutions.pose as mp_pose
-    import mediapipe.python.solutions.drawing_utils as mp_drawing
+# --- САМЫЙ ПРОСТОЙ ИМПОРТ В МИРЕ ---
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
-# Инициализация модели
-@st.cache_resource
-def load_model():
-    return mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-
-pose = load_model()
+# Инициализация модели (без кеша, чтобы не глючило)
+pose = mp_pose.Pose(
+    min_detection_confidence=0.5, 
+    min_tracking_confidence=0.5
+)
 
 # Переменные счета
 if 'count' not in st.session_state:
@@ -36,31 +30,38 @@ def get_angle(a, b, c):
     return 360 - angle if angle > 180.0 else angle
 
 # Камера
-img_file = st.camera_input("Встань перед камерой боком")
+img_file = st.camera_input("Встань перед камерой боком и сделай фото")
 
 if img_file:
+    # Читаем фото
     file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     
+    # Нейросеть любит RGB
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     results = pose.process(rgb)
     
     if results.pose_landmarks:
-        mp_drawing.draw_landmarks(rgb, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        # Рисуем скелет поверх изображения
+        mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
         lm = results.pose_landmarks.landmark
         
-        # Точки: плечо(11), локоть(13), кисть(15)
-        s = [lm[11].x, lm[11].y]
-        e = [lm[13].x, lm[13].y]
-        w = [lm[15].x, lm[15].y]
+        # Точки для правой стороны: плечо(12), локоть(14), кисть(16)
+        s = [lm[12].x, lm[12].y]
+        e = [lm[14].x, lm[14].y]
+        w = [lm[16].x, lm[16].y]
         
         angle = get_angle(s, e, w)
         
-        if angle > 160: st.session_state.stage = "up"
+        # Логика отжимания
+        if angle > 160: 
+            st.session_state.stage = "up"
         if angle < 90 and st.session_state.stage == "up":
             st.session_state.stage = "down"
             st.session_state.count += 1
             st.balloons()
 
-    st.image(rgb)
-    st.header(f"Счет: {st.session_state.count}")
+    # Показываем результат (конвертируем обратно в RGB для Streamlit)
+    res_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    st.image(res_img)
+    st.header(f"Отжиманий: {st.session_state.count}")
